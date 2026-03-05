@@ -48,9 +48,10 @@ class _HomePageState extends State<HomePage> {
       String token = prefs.getString("token") ?? "";
 
       var response = await myHttp.get(
-        Uri.parse('http://10.0.2.2:8000/api/get-presensi'),
+        // Uri.parse('http://10.0.2.2:8000/api/get-presensi'),
+        Uri.parse('http://192.168.187.131:8000/api/get-presensi'),
         headers: {
-          "Accept": "application/json",
+          "Accept": "applicatsion/json",
           "Authorization": "Bearer $token",
         },
       );

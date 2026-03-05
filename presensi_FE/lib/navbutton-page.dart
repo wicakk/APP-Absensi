@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'home-page.dart';
 import 'riwayat-page.dart';
-import 'profile-page.dart';
+import 'settings/profile-page.dart';
 import 'jadwal-page.dart';
 
 class MainPage extends StatefulWidget {

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as myHttp;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'info-personal-page.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -11,47 +12,77 @@ class ProfilePage extends StatefulWidget {
 }
 
 class _ProfilePageState extends State<ProfilePage> {
-  String name = "";
-  String jabatan = "";
-  String perusahaan = "";
+  bool isLoading = true;
+  Map<String, dynamic>? pegawai;
   String token = "";
 
   @override
   void initState() {
     super.initState();
-    _loadUserData();
+    _fetchProfile();
   }
 
-  Future<void> _loadUserData() async {
+  Future<void> _fetchProfile() async {
     final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      name      = prefs.getString("name")      ?? "Nama Tidak Ada";
-      jabatan   = prefs.getString("jabatan")   ?? "Engineer Onsite";
-      perusahaan = prefs.getString("perusahaan") ?? "PT. Amoro Technology Indonesia";
-      token     = prefs.getString("token")     ?? "";
-    });
+    token = prefs.getString("token") ?? "";
+
+    try {
+      final res = await myHttp.get(
+        // Uri.parse('http://10.0.2.2:8000/api/pegawai/profile'),
+        Uri.parse('http://192.168.187.131:8000/api/pegawai/profile'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+        },
+      );
+
+      if (res.statusCode == 200) {
+        final json = jsonDecode(res.body);
+        setState(() {
+          pegawai   = json['data'];
+          isLoading = false;
+        });
+      } else {
+        setState(() => isLoading = false);
+        _showMessage('Gagal memuat data profil');
+      }
+    } catch (_) {
+      setState(() => isLoading = false);
+      _showMessage('Terjadi kesalahan koneksi');
+    }
   }
 
   Future<void> _logout() async {
+    try {
+      await myHttp.post(
+        // Uri.parse('http://10.0.2.2:8000/api/logout'),
+        Uri.parse('http://192.168.187.131:8000/api/logout'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+        },
+      );
+    } catch (_) {}
+
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear();
+    if (!mounted) return;
     Navigator.of(context).pushReplacementNamed('/login');
   }
 
-  void showMessage(String msg) {
+  void _showMessage(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  // ========== BOTTOM SHEET UBAH PASSWORD ==========
   void _showUbahPasswordDialog() {
-    final oldPassCtrl = TextEditingController();
-    final newPassCtrl = TextEditingController();
-    final konfirmCtrl = TextEditingController();
-    bool isLoading  = false;
-    bool oldVisible = false;
-    bool newVisible = false;
+    final oldPassCtrl    = TextEditingController();
+    final newPassCtrl    = TextEditingController();
+    final konfirmCtrl    = TextEditingController();
+    bool isLoadingDialog = false;
+    bool oldVisible      = false;
+    bool newVisible      = false;
 
     showModalBottomSheet(
       context: context,
@@ -69,7 +100,6 @@ class _ProfilePageState extends State<ProfilePage> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Handle bar
               Center(
                 child: Container(
                   width: 40, height: 4,
@@ -80,15 +110,12 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
               ),
               const SizedBox(height: 20),
-
               const Text('Ubah Kata Sandi',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               const SizedBox(height: 4),
               Text('Minimal 6 karakter',
                   style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
               const SizedBox(height: 20),
-
-              // Password lama
               _buildPassField(
                 controller: oldPassCtrl,
                 label: 'Password Lama',
@@ -96,8 +123,6 @@ class _ProfilePageState extends State<ProfilePage> {
                 onToggle: () => setDialog(() => oldVisible = !oldVisible),
               ),
               const SizedBox(height: 12),
-
-              // Password baru
               _buildPassField(
                 controller: newPassCtrl,
                 label: 'Password Baru',
@@ -105,8 +130,6 @@ class _ProfilePageState extends State<ProfilePage> {
                 onToggle: () => setDialog(() => newVisible = !newVisible),
               ),
               const SizedBox(height: 12),
-
-              // Konfirmasi
               _buildPassField(
                 controller: konfirmCtrl,
                 label: 'Konfirmasi Password Baru',
@@ -114,8 +137,6 @@ class _ProfilePageState extends State<ProfilePage> {
                 onToggle: () => setDialog(() => newVisible = !newVisible),
               ),
               const SizedBox(height: 24),
-
-              // Tombol simpan
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
@@ -125,21 +146,22 @@ class _ProfilePageState extends State<ProfilePage> {
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12)),
                   ),
-                  onPressed: isLoading
+                  onPressed: isLoadingDialog
                       ? null
                       : () async {
                           if (newPassCtrl.text != konfirmCtrl.text) {
-                            showMessage('Konfirmasi password tidak cocok');
+                            _showMessage('Konfirmasi password tidak cocok');
                             return;
                           }
                           if (newPassCtrl.text.length < 6) {
-                            showMessage('Password minimal 6 karakter');
+                            _showMessage('Password minimal 6 karakter');
                             return;
                           }
-                          setDialog(() => isLoading = true);
+                          setDialog(() => isLoadingDialog = true);
                           try {
                             final res = await myHttp.post(
-                              Uri.parse('http://10.0.2.2:8000/api/ubah-password'),
+                              // Uri.parse('http://10.0.2.2:8000/api/ubah-password'),
+                              Uri.parse('http://192.168.187.131:8000/api/ubah-password'),
                               headers: {
                                 'Authorization': 'Bearer $token',
                                 'Content-Type': 'application/json',
@@ -153,14 +175,14 @@ class _ProfilePageState extends State<ProfilePage> {
                             final result = jsonDecode(res.body);
                             if (!mounted) return;
                             Navigator.pop(ctx);
-                            showMessage(result['message'] ?? 'Berhasil');
+                            _showMessage(result['message'] ?? 'Berhasil');
                           } catch (_) {
-                            showMessage('Terjadi kesalahan koneksi');
+                            _showMessage('Terjadi kesalahan koneksi');
                           } finally {
-                            setDialog(() => isLoading = false);
+                            setDialog(() => isLoadingDialog = false);
                           }
                         },
-                  child: isLoading
+                  child: isLoadingDialog
                       ? const SizedBox(
                           height: 18, width: 18,
                           child: CircularProgressIndicator(
@@ -205,105 +227,135 @@ class _ProfilePageState extends State<ProfilePage> {
 
   @override
   Widget build(BuildContext context) {
+    final name       = pegawai?['name']                           ?? '-';
+    final jabatan    = pegawai?['jabatan']?['nama_jabatan']       ?? '-';
+    final departemen = pegawai?['departemen']?['nama_departemen'] ?? '-';
+    final foto       = pegawai?['foto'];
+
     return Scaffold(
       backgroundColor: const Color(0xFFF3F4F6),
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            // ================= HEADER =================
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(20, 50, 20, 25),
-              decoration: const BoxDecoration(
-                color: Color(0xFFEDEAE6),
-                borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(20),
-                  bottomRight: Radius.circular(20),
-                ),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              child: Column(
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                  // ================= HEADER =================
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.fromLTRB(20, 50, 20, 25),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFEDEAE6),
+                      borderRadius: BorderRadius.only(
+                        bottomLeft: Radius.circular(20),
+                        bottomRight: Radius.circular(20),
+                      ),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        Text(name,
-                            style: const TextStyle(
-                                fontSize: 20, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 6),
-                        Text(jabatan,
-                            style: const TextStyle(color: Colors.black54)),
-                        const SizedBox(height: 4),
-                        Text(perusahaan,
-                            style: const TextStyle(color: Colors.black54)),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(name,
+                                  style: const TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold)),
+                              const SizedBox(height: 6),
+                              Text(jabatan,
+                                  style: const TextStyle(color: Colors.black54)),
+                              const SizedBox(height: 4),
+                              Text(departemen,
+                                  style: const TextStyle(color: Colors.black54)),
+                            ],
+                          ),
+                        ),
+                        CircleAvatar(
+                          radius: 35,
+                          backgroundImage: foto != null
+                              ? NetworkImage(foto) as ImageProvider
+                              : null,
+                          backgroundColor: Colors.blue.shade100,
+                          child: foto == null
+                              ? Text(
+                                  name.isNotEmpty ? name[0].toUpperCase() : '?',
+                                  style: TextStyle(
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.blue.shade700),
+                                )
+                              : null,
+                        ),
                       ],
                     ),
                   ),
-                  const CircleAvatar(
-                    radius: 35,
-                    backgroundImage: AssetImage("assets/profile.jpg"),
+
+                  const SizedBox(height: 20),
+
+                  // ================= INFO SECTION =================
+                  _buildSectionCard(
+                    title: "Info saya",
+                    children: [
+                      _buildMenuTile(
+                        Icons.person_outline,
+                        "Info personal",
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => InfoPersonalPage(
+                              pegawai: pegawai ?? {},
+                            ),
+                          ),
+                        ),
+                      ),
+                      // _buildMenuTile(Icons.badge_outlined, "Info pekerjaan"),
+                      // _buildMenuTile(Icons.flag_outlined, "Info kontak darurat"),
+                      // _buildMenuTile(Icons.groups_outlined, "Info keluarga"),
+                      _buildMenuTile(Icons.school_outlined, "Pendidikan dan Pengalaman"),
+                      // _buildMenuTile(Icons.receipt_long_outlined, "Info payroll"),
+                      _buildMenuTile(Icons.info_outline, "Info tambahan"),
+                      // _buildMenuTile(Icons.folder_open_outlined, "File saya"),
+                      _buildMenuTile(Icons.warning_amber_outlined, "Peringatan"),
+                    ],
                   ),
+
+                  const SizedBox(height: 16),
+
+                  // ================= SETTINGS =================
+                  _buildSectionCard(
+                    title: "Pengaturan",
+                    children: [
+                      _buildMenuTile(
+                        Icons.lock_outline,
+                        "Ubah kata sandi",
+                        onTap: _showUbahPasswordDialog,
+                      ),
+                      _buildMenuTile(
+                        Icons.pin_outlined,
+                        "PIN",
+                        trailingText: "Tidak aktif",
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // ================= LOGOUT =================
+                  _buildSectionCard(
+                    title: "Akun",
+                    children: [
+                      _buildMenuTile(
+                        Icons.logout_outlined,
+                        "Keluar",
+                        onTap: _logout,
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 30),
                 ],
               ),
             ),
-
-            const SizedBox(height: 20),
-
-            // ================= INFO SECTION =================
-            _buildSectionCard(
-              title: "Info saya",
-              children: [
-                _buildMenuTile(Icons.person_outline, "Info personal"),
-                _buildMenuTile(Icons.badge_outlined, "Info pekerjaan"),
-                _buildMenuTile(Icons.flag_outlined, "Info kontak darurat"),
-                _buildMenuTile(Icons.groups_outlined, "Info keluarga"),
-                _buildMenuTile(Icons.school_outlined, "Pendidikan dan Pengalaman"),
-                _buildMenuTile(Icons.receipt_long_outlined, "Info payroll"),
-                _buildMenuTile(Icons.info_outline, "Info tambahan"),
-                _buildMenuTile(Icons.folder_open_outlined, "File saya"),
-                _buildMenuTile(Icons.warning_amber_outlined, "Peringatan"),
-              ],
-            ),
-
-            const SizedBox(height: 16),
-
-            // ================= SETTINGS =================
-            _buildSectionCard(
-              title: "Pengaturan",
-              children: [
-                // ← Ubah kata sandi: bisa diklik → muncul bottom sheet
-                _buildMenuTile(
-                  Icons.lock_outline,
-                  "Ubah kata sandi",
-                  onTap: _showUbahPasswordDialog,
-                ),
-                _buildMenuTile(
-                  Icons.pin_outlined,
-                  "PIN",
-                  trailingText: "Tidak aktif",
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 16),
-
-            // ================= LOGOUT =================
-            _buildSectionCard(
-              title: "Akun",
-              children: [
-                _buildMenuTile(
-                  Icons.logout_outlined,
-                  "Keluar",
-                  onTap: _logout,
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 30),
-          ],
-        ),
-      ),
     );
   }
 

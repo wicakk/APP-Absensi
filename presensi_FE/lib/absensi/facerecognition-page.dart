@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data'; 
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
@@ -30,17 +30,23 @@ class _FaceRecognitionPageState extends State<FaceRecognitionPage> {
   bool _isFaceDetected = false;
   bool _isDetecting = false;
   bool _isLoading = false;
+  bool _isStreamStopped = false; // FIX: flag untuk cegah race condition
+  bool _isTakingPicture = false; // FIX: cegah double tap
   XFile? _capturedImage;
 
-  // ML Kit face detector
+  // ML Kit face detector - sensitivitas longgar agar mudah terdeteksi
   final FaceDetector _faceDetector = FaceDetector(
     options: FaceDetectorOptions(
       enableClassification: false,
-      enableTracking: false,
-      minFaceSize: 0.15,
-      performanceMode: FaceDetectorMode.fast,
+      enableTracking: true,        // tracking ON agar lebih stabil
+      minFaceSize: 0.05,           // diturunkan dari 0.15 → lebih mudah detect
+      performanceMode: FaceDetectorMode.accurate, // lebih akurat meski sedikit lebih lambat
     ),
   );
+
+  // Counter untuk stabilisasi: wajah harus terdeteksi beberapa frame berturut-turut
+  int _faceDetectedFrameCount = 0;
+  static const int _faceStableThreshold = 3; // butuh 3 frame berturut-turut
 
   @override
   void initState() {
@@ -49,48 +55,55 @@ class _FaceRecognitionPageState extends State<FaceRecognitionPage> {
   }
 
   Future<void> _initCamera() async {
-    _cameras = await availableCameras();
+    try {
+      _cameras = await availableCameras();
 
-    // Pilih kamera depan (selfie)
-    final frontCamera = _cameras!.firstWhere(
-      (cam) => cam.lensDirection == CameraLensDirection.front,
-      orElse: () => _cameras!.first,
-    );
+      final frontCamera = _cameras!.firstWhere(
+        (cam) => cam.lensDirection == CameraLensDirection.front,
+        orElse: () => _cameras!.first,
+      );
 
-    _cameraController = CameraController(
-      frontCamera,
-      ResolutionPreset.medium,
-      imageFormatGroup: ImageFormatGroup.jpeg,
-    );
+      _cameraController = CameraController(
+        frontCamera,
+        ResolutionPreset.medium,
+        imageFormatGroup: ImageFormatGroup.yuv420, // FIX: gunakan yuv420 bukan jpeg untuk stream
+        enableAudio: false,
+      );
 
-    await _cameraController!.initialize();
+      await _cameraController!.initialize();
 
-    if (!mounted) return;
-    setState(() => _isCameraReady = true);
+      if (!mounted) return;
+      setState(() {
+        _isCameraReady = true;
+        _isStreamStopped = false;
+      });
 
-    // Mulai deteksi wajah secara realtime dari stream kamera
-    _cameraController!.startImageStream(_detectFaceFromStream);
+      _cameraController!.startImageStream(_detectFaceFromStream);
+    } catch (e) {
+      debugPrint("ERROR INIT CAMERA: $e");
+      if (mounted) showMessage("Gagal membuka kamera: $e");
+    }
   }
 
   // Deteksi wajah dari stream kamera (realtime)
   Future<void> _detectFaceFromStream(CameraImage image) async {
-    if (_isDetecting || _capturedImage != null) return;
+    // FIX: tambah _isStreamStopped & _isTakingPicture agar tidak bentrok
+    if (_isDetecting || _capturedImage != null || _isStreamStopped || _isTakingPicture) return;
     _isDetecting = true;
 
     try {
-      final bytes = image.planes.fold<List<int>>(
-        [],
-        (buffer, plane) => buffer..addAll(plane.bytes),
+      final bytes = Uint8List.fromList(
+        image.planes.fold<List<int>>([], (buf, plane) => buf..addAll(plane.bytes)),
       );
 
       final inputImage = InputImage.fromBytes(
-        bytes: Uint8List.fromList(bytes),
+        bytes: bytes,
         metadata: InputImageMetadata(
           size: Size(
             image.width.toDouble(),
             image.height.toDouble(),
           ),
-          rotation: InputImageRotation.rotation270deg, // sesuaikan jika perlu
+          rotation: InputImageRotation.rotation270deg,
           format: InputImageFormat.yuv_420_888,
           bytesPerRow: image.planes.first.bytesPerRow,
         ),
@@ -98,8 +111,20 @@ class _FaceRecognitionPageState extends State<FaceRecognitionPage> {
 
       final faces = await _faceDetector.processImage(inputImage);
 
-      if (mounted) {
-        setState(() => _isFaceDetected = faces.isNotEmpty);
+      if (mounted && !_isStreamStopped) {
+        if (faces.isNotEmpty) {
+          _faceDetectedFrameCount++;
+        } else {
+          _faceDetectedFrameCount = 0;
+        }
+
+        final stable = _faceDetectedFrameCount >= _faceStableThreshold;
+        setState(() => _isFaceDetected = stable);
+
+        // AUTO FOTO: setelah wajah stabil terdeteksi, langsung ambil foto
+        if (stable && !_isTakingPicture && _capturedImage == null) {
+          _takePicture();
+        }
       }
     } catch (_) {
       // abaikan error stream
@@ -108,22 +133,49 @@ class _FaceRecognitionPageState extends State<FaceRecognitionPage> {
     }
   }
 
-  // Ambil foto selfie
+  // FIX: Ambil foto dengan penanganan race condition yang benar
   Future<void> _takePicture() async {
-    if (_cameraController == null || !_cameraController!.value.isInitialized) {
-      return;
-    }
+    if (_cameraController == null || !_cameraController!.value.isInitialized) return;
+    if (_isTakingPicture || _isStreamStopped) return;
 
-    // Hentikan stream dulu sebelum foto
-    await _cameraController!.stopImageStream();
+    // Set flag SEBELUM apapun untuk cegah double-tap & stream masuk lagi
+    setState(() => _isTakingPicture = true);
+    _isStreamStopped = true;
 
     try {
+      // Tunggu frame terakhir selesai diproses
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      // Stop stream
+      if (_cameraController!.value.isStreamingImages) {
+        await _cameraController!.stopImageStream();
+      }
+
+      // Tunggu sebentar lagi agar kamera stabil
+      await Future.delayed(const Duration(milliseconds: 300));
+
+      if (!mounted) return;
+
       final image = await _cameraController!.takePicture();
-      setState(() => _capturedImage = image);
+
+      if (mounted) {
+        setState(() => _capturedImage = image);
+        // AUTO SUBMIT: langsung kirim setelah foto diambil
+        _submitPresensi();
+      }
     } catch (e) {
-      showMessage("Gagal mengambil foto: $e");
-      // Lanjutkan stream lagi jika gagal
-      _cameraController!.startImageStream(_detectFaceFromStream);
+      debugPrint("ERROR TAKE PICTURE: $e");
+      if (mounted) showMessage("Gagal mengambil foto, coba lagi");
+
+      // Reset dan nyalakan kembali stream
+      _isStreamStopped = false;
+      if (mounted && _cameraController != null && _cameraController!.value.isInitialized) {
+        try {
+          _cameraController!.startImageStream(_detectFaceFromStream);
+        } catch (_) {}
+      }
+    } finally {
+      if (mounted) setState(() => _isTakingPicture = false);
     }
   }
 
@@ -132,8 +184,21 @@ class _FaceRecognitionPageState extends State<FaceRecognitionPage> {
     setState(() {
       _capturedImage = null;
       _isFaceDetected = false;
+      _isStreamStopped = false;
+      _isTakingPicture = false;
     });
-    _cameraController!.startImageStream(_detectFaceFromStream);
+
+    try {
+      if (_cameraController != null &&
+          _cameraController!.value.isInitialized &&
+          !_cameraController!.value.isStreamingImages) {
+        _cameraController!.startImageStream(_detectFaceFromStream);
+      }
+    } catch (e) {
+      debugPrint("ERROR RESTART STREAM: $e");
+      // Jika gagal restart stream, reinit kamera
+      _initCamera();
+    }
   }
 
   // Kirim data ke API
@@ -146,12 +211,11 @@ class _FaceRecognitionPageState extends State<FaceRecognitionPage> {
     setState(() => _isLoading = true);
 
     try {
-      // Konversi foto ke base64
       final bytes = await File(_capturedImage!.path).readAsBytes();
       final base64Image = base64Encode(bytes);
 
-      var response = await myHttp.post(
-        Uri.parse('http://10.0.2.2:8000/api/save-presensi'),
+      final response = await myHttp.post(
+        Uri.parse('http://192.168.187.131:8000/api/save-presensi'),
         headers: {
           "Authorization": "Bearer ${widget.token}",
           "Content-Type": "application/json",
@@ -159,25 +223,24 @@ class _FaceRecognitionPageState extends State<FaceRecognitionPage> {
         body: jsonEncode({
           "latitude": widget.latitude,
           "longitude": widget.longitude,
-          "foto": base64Image, // <-- foto selfie dalam base64
+          "foto": base64Image,
         }),
-      );
+      ).timeout(const Duration(seconds: 30)); // FIX: tambah timeout
 
-      print("STATUS CODE: ${response.statusCode}");
-      print("BODY: ${response.body}");
+      debugPrint("STATUS CODE: ${response.statusCode}");
+      debugPrint("BODY: ${response.body}");
 
       if (!mounted) return;
 
-      var result = jsonDecode(response.body);
+      final result = jsonDecode(response.body);
       showMessage(result["message"] ?? "Terjadi kesalahan");
 
       if (result["success"] == true) {
-        // Kembali ke halaman awal (pop semua route sampai root)
         Navigator.popUntil(context, (route) => route.isFirst);
       }
     } catch (e) {
-      print("ERROR SIMPAN: $e");
-      if (mounted) showMessage("Terjadi kesalahan koneksi");
+      debugPrint("ERROR SIMPAN: $e");
+      if (mounted) showMessage("Terjadi kesalahan koneksi: ${e.toString()}");
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -192,6 +255,7 @@ class _FaceRecognitionPageState extends State<FaceRecognitionPage> {
 
   @override
   void dispose() {
+    _isStreamStopped = true;
     _cameraController?.dispose();
     _faceDetector.close();
     super.dispose();
@@ -235,11 +299,10 @@ class _FaceRecognitionPageState extends State<FaceRecognitionPage> {
                 ),
                 const SizedBox(height: 5),
                 const Text(
-                  "Langkah 2 dari 2", // <-- step 2: wajah
+                  "Langkah 2 dari 2",
                   style: TextStyle(fontSize: 14, color: Colors.white70),
                 ),
                 const SizedBox(height: 10),
-                // Indikator deteksi wajah
                 AnimatedContainer(
                   duration: const Duration(milliseconds: 300),
                   padding:
@@ -250,15 +313,16 @@ class _FaceRecognitionPageState extends State<FaceRecognitionPage> {
                         : Colors.white.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color:
-                          _isFaceDetected ? Colors.greenAccent : Colors.white30,
+                      color: _isFaceDetected ? Colors.greenAccent : Colors.white30,
                     ),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        _isFaceDetected ? Icons.face : Icons.face_retouching_off,
+                        _isFaceDetected
+                            ? Icons.face
+                            : Icons.face_retouching_off,
                         color: _isFaceDetected
                             ? Colors.greenAccent
                             : Colors.white54,
@@ -302,7 +366,6 @@ class _FaceRecognitionPageState extends State<FaceRecognitionPage> {
   }
 
   Widget _buildCameraArea() {
-    // Tampilkan preview foto jika sudah diambil
     if (_capturedImage != null) {
       return Stack(
         fit: StackFit.expand,
@@ -311,7 +374,6 @@ class _FaceRecognitionPageState extends State<FaceRecognitionPage> {
             File(_capturedImage!.path),
             fit: BoxFit.cover,
           ),
-          // Overlay centang hijau
           Center(
             child: Container(
               padding: const EdgeInsets.all(20),
@@ -325,9 +387,11 @@ class _FaceRecognitionPageState extends State<FaceRecognitionPage> {
                   Icon(Icons.check_circle, color: Colors.greenAccent, size: 60),
                   SizedBox(height: 10),
                   Text(
-                    "Foto siap dikirim",
+                    "Wajah terdeteksi, mengirim data...",
                     style: TextStyle(color: Colors.white, fontSize: 16),
                   ),
+                  SizedBox(height: 12),
+                  CircularProgressIndicator(color: Colors.greenAccent),
                 ],
               ),
             ),
@@ -336,7 +400,6 @@ class _FaceRecognitionPageState extends State<FaceRecognitionPage> {
       );
     }
 
-    // Tampilkan kamera
     if (!_isCameraReady || _cameraController == null) {
       return const Center(
         child: CircularProgressIndicator(color: Colors.white),
@@ -347,66 +410,85 @@ class _FaceRecognitionPageState extends State<FaceRecognitionPage> {
       fit: StackFit.expand,
       children: [
         CameraPreview(_cameraController!),
-        // Overlay oval panduan wajah
-        Center(
-          child: Container(
-            width: 220,
-            height: 280,
-            decoration: BoxDecoration(
-              border: Border.all(
-                color: _isFaceDetected ? Colors.greenAccent : Colors.white54,
-                width: 2.5,
+        // FIX: tampilkan loading saat sedang mengambil foto
+        if (_isTakingPicture)
+          Container(
+            color: Colors.black45,
+            child: const Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(color: Colors.white),
+                  SizedBox(height: 12),
+                  Text("Mengambil foto...",
+                      style: TextStyle(color: Colors.white)),
+                ],
               ),
-              borderRadius: BorderRadius.circular(140),
             ),
           ),
-        ),
+        // Overlay oval panduan wajah
+        if (!_isTakingPicture)
+          Center(
+            child: Container(
+              width: 220,
+              height: 280,
+              decoration: BoxDecoration(
+                border: Border.all(
+                  color: _isFaceDetected ? Colors.greenAccent : Colors.white54,
+                  width: 2.5,
+                ),
+                borderRadius: BorderRadius.circular(140),
+              ),
+            ),
+          ),
       ],
     );
   }
 
-  // Tombol ambil foto (sebelum foto)
   Widget _buildCaptureButton() {
     return Column(
       children: [
         Text(
-          _isFaceDetected
-              ? "Tekan tombol untuk mengambil foto"
-              : "Posisikan wajah di dalam lingkaran",
+          _isTakingPicture
+              ? "Mengambil foto..."
+              : _isFaceDetected
+                  ? "Wajah terdeteksi, foto otomatis diambil..."
+                  : "Posisikan wajah di dalam lingkaran",
           style: const TextStyle(color: Colors.white70, fontSize: 13),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 16),
-        GestureDetector(
-          onTap: _isFaceDetected ? _takePicture : null,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            width: 70,
-            height: 70,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: _isFaceDetected ? Colors.white : Colors.white24,
-              border: Border.all(
-                color: _isFaceDetected ? Colors.greenAccent : Colors.white30,
-                width: 3,
-              ),
-            ),
-            child: Icon(
-              Icons.camera_alt,
-              color: _isFaceDetected ? Colors.black : Colors.white38,
-              size: 32,
-            ),
-          ),
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 300),
+          child: (_isFaceDetected || _isTakingPicture)
+              ? const SizedBox(
+                  key: ValueKey('spinner'),
+                  width: 50,
+                  height: 50,
+                  child: CircularProgressIndicator(
+                    color: Colors.greenAccent,
+                    strokeWidth: 3,
+                  ),
+                )
+              : Container(
+                  key: const ValueKey('idle'),
+                  width: 70,
+                  height: 70,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white12,
+                    border: Border.all(color: Colors.white30, width: 3),
+                  ),
+                  child: const Icon(Icons.face, color: Colors.white38, size: 32),
+                ),
         ),
       ],
     );
   }
 
-  // Tombol setelah foto diambil: Ulangi | Absen Masuk
   Widget _buildAfterCaptureButtons() {
     return Row(
       children: [
-        // Tombol ulangi
         Expanded(
           child: OutlinedButton.icon(
             style: OutlinedButton.styleFrom(
@@ -422,7 +504,6 @@ class _FaceRecognitionPageState extends State<FaceRecognitionPage> {
           ),
         ),
         const SizedBox(width: 12),
-        // Tombol absen masuk
         Expanded(
           flex: 2,
           child: ElevatedButton.icon(
