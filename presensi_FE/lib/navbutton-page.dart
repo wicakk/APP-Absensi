@@ -139,10 +139,10 @@ class _MainPageState extends State<MainPage> {
 
             const SizedBox(height: 15),
 
-            _sheetItem(icon: Icons.receipt_long, title: "Reimbursement"),
+            // _sheetItem(icon: Icons.receipt_long, title: "Reimbursement"),
             _sheetItem(icon: Icons.event, title: "Cuti", routeName: '/cuti'),
             _sheetItem(icon: Icons.location_on, title: "Absensi"),
-            _sheetItem(icon: Icons.work_outline, title: "Perubahan Shift"),
+            // _sheetItem(icon: Icons.work_outline, title: "Perubahan Shift"),
             _sheetItem(icon: Icons.access_time, title: "Lembur"),
             _sheetItem(icon: Icons.person_outline, title: "Perubahan Data"),
 

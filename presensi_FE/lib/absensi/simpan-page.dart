@@ -1,10 +1,10 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:location/location.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:syncfusion_flutter_maps/maps.dart';
-import 'package:http/http.dart' as myHttp;
-import 'facerecognition-page.dart'; // ← tambahkan ini
+import 'facerecognition-page.dart';
 
 class SimpanPage extends StatefulWidget {
   const SimpanPage({Key? key}) : super(key: key);
@@ -16,79 +16,105 @@ class SimpanPage extends StatefulWidget {
 class _SimpanPageState extends State<SimpanPage> {
   bool isLoading = false;
   String _token = "";
+  String _jamMasuk = "--:--";
+  String _jamPulang = "--:--";
+
+  late Future<Position?> _locationFuture;  // ← Position, bukan LocationData
 
   @override
   void initState() {
     super.initState();
     _loadToken();
+    _locationFuture = _currentLocation();
+    _fetchJamKerja();
   }
 
   Future<void> _loadToken() async {
     final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _token = prefs.getString("token") ?? "";
-    });
+    if (mounted) {
+      setState(() {
+        _token = prefs.getString("token") ?? "";
+      });
+    }
   }
 
-  Future<LocationData?> _currentLocation() async {
-    Location location = Location();
+  Future<void> _fetchJamKerja() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString("token") ?? "";
 
-    bool serviceEnable = await location.serviceEnabled();
-    if (!serviceEnable) {
-      serviceEnable = await location.requestService();
-      if (!serviceEnable) return null;
+    final response = await http.get(
+      Uri.parse("http://192.168.187.131:8000/api/jadwal"), // ← 10.0.2.2 untuk emulator, ganti IP asli untuk device fisik
+      headers: {
+        "Authorization": "Bearer $token",
+        "Content-Type": "application/json",
+      },
+    );
+
+    if (response.statusCode == 200) {
+      final json = jsonDecode(response.body);
+      final List data = json['data'];
+
+      // Ambil nama hari ini dalam Bahasa Indonesia
+      const hariList = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+      final hariIni = hariList[DateTime.now().weekday % 7];
+
+      // Cari jadwal yang sesuai hari ini
+      final jadwal = data.firstWhere(
+        (item) => item['hari'] == hariIni,
+        orElse: () => null,
+      );
+
+      if (mounted) {
+        setState(() {
+          if (jadwal != null) {
+            // Format "07:30:00" → "07:30"
+            _jamMasuk = jadwal['jam_masuk'].toString().substring(0, 5);
+            _jamPulang = jadwal['jam_pulang'].toString().substring(0, 5);
+          } else {
+            _jamMasuk = "Libur";
+            _jamPulang = "Libur";
+          }
+        });
+      }
     }
+  } catch (e) {
+    debugPrint("Gagal fetch jam kerja: $e");
+  }
+}
 
-    PermissionStatus permissionGranted = await location.hasPermission();
-    if (permissionGranted == PermissionStatus.denied) {
-      permissionGranted = await location.requestPermission();
-      if (permissionGranted != PermissionStatus.granted) return null;
+  Future<Position?> _currentLocation() async {  // ← Position
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return null;
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) return null;
+      }
+
+      if (permission == LocationPermission.deniedForever) return null;
+
+      return await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.low,
+      );
+    } catch (e) {
+      debugPrint("Error lokasi: $e");
+      return null;
     }
-
-    return await location.getLocation();
   }
 
-  // Future<void> savePresensi(double? latitude, double? longitude) async {
-  //   if (latitude == null || longitude == null) {
-  //     showMessage("Lokasi tidak tersedia");
-  //     return;
-  //   }
-
-  //   setState(() => isLoading = true);
-
-  //   try {
-  //     var response = await myHttp.post(
-  //       Uri.parse('http://10.0.2.2:8000/api/save-presensi'),
-  //       headers: {
-  //         "Authorization": "Bearer $_token",
-  //         "Content-Type": "application/json",
-  //       },
-  //       body: jsonEncode({
-  //         "latitude": latitude,
-  //         "longitude": longitude,
-  //       }),
-  //     );
-
-  //     print("STATUS CODE: ${response.statusCode}");
-  //     print("BODY: ${response.body}");
-
-  //     if (!mounted) return;
-
-  //     var result = jsonDecode(response.body);
-  //     showMessage(result["message"] ?? "Terjadi kesalahan");
-
-  //     if (result["success"] == true) {
-  //       Navigator.pop(context);
-  //     }
-  //   } catch (e) {
-  //     print("ERROR SIMPAN: $e");
-  //     print("ERROR SIMPAN DETAIL: ${e.toString()}");
-  //     print("TOKEN: $_token");
-  //     if (mounted) showMessage("Terjadi kesalahan koneksi");
-  //   } finally {
-  //     if (mounted) setState(() => isLoading = false);
-  //   }
-  // }
+  String _formattedDateTime() {
+    final now = DateTime.now();
+    const months = [
+      '', 'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
+      'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'
+    ];
+    final tanggal =
+        '${now.day.toString().padLeft(2, '0')} ${months[now.month]} ${now.year}';
+    return '$tanggal ($_jamMasuk - $_jamPulang)';
+  }
 
   void showMessage(String message) {
     if (!mounted) return;
@@ -101,17 +127,47 @@ class _SimpanPageState extends State<SimpanPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      body: FutureBuilder<LocationData?>(
-        future: _currentLocation(),
+      body: FutureBuilder<Position?>(  // ← Position
+        future: _locationFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
+            return const Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text("Mendapatkan lokasi...",
+                      style: TextStyle(color: Colors.grey)),
+                ],
+              ),
+            );
           }
 
           if (!snapshot.hasData || snapshot.data == null) {
-            return const Center(
-              child: Text("Lokasi tidak tersedia.\nPastikan GPS aktif.",
-                  textAlign: TextAlign.center),
+            return Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.location_off, size: 60, color: Colors.grey),
+                  const SizedBox(height: 12),
+                  const Text(
+                    "Lokasi tidak tersedia.\nPastikan GPS aktif.",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      setState(() {
+                        _locationFuture = _currentLocation();
+                      });
+                    },
+                    icon: const Icon(Icons.refresh),
+                    label: const Text("Coba Lagi"),
+                  ),
+                ],
+              ),
             );
           }
 
@@ -153,13 +209,13 @@ class _SimpanPageState extends State<SimpanPage> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Row(
-                        children: const [
-                          Icon(Icons.calendar_today,
+                        children: [
+                          const Icon(Icons.calendar_today,
                               size: 18, color: Colors.grey),
-                          SizedBox(width: 10),
+                          const SizedBox(width: 10),
                           Text(
-                            "01 Mar 2026 (00:00 - 00:00)",
-                            style: TextStyle(fontWeight: FontWeight.bold),
+                            _formattedDateTime(),
+                            style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
                         ],
                       ),
@@ -174,8 +230,8 @@ class _SimpanPageState extends State<SimpanPage> {
                   layers: [
                     MapTileLayer(
                       initialFocalLatLng: MapLatLng(
-                        currentLocation.latitude!,
-                        currentLocation.longitude!,
+                        currentLocation.latitude,   // ← tanpa ! karena Position bukan nullable
+                        currentLocation.longitude,
                       ),
                       initialZoomLevel: 15,
                       initialMarkersCount: 1,
@@ -183,8 +239,8 @@ class _SimpanPageState extends State<SimpanPage> {
                           "https://api.maptiler.com/maps/streets-v4/{z}/{x}/{y}.png?key=H706aZMoHXuQnUCZMGBZ",
                       markerBuilder: (context, index) {
                         return MapMarker(
-                          latitude: currentLocation.latitude!,
-                          longitude: currentLocation.longitude!,
+                          latitude: currentLocation.latitude,
+                          longitude: currentLocation.longitude,
                           child: const Icon(
                             Icons.location_on,
                             color: Colors.red,
@@ -201,34 +257,44 @@ class _SimpanPageState extends State<SimpanPage> {
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(20),
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10)),
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF2962FF), Color(0xFF0039CB)],
+                    ),
+                    borderRadius: BorderRadius.circular(10),
                   ),
-                  // ✅ SESUDAH
-                  onPressed: isLoading
-                      ? null
-                      : () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => FaceRecognitionPage(
-                                latitude: currentLocation.latitude!,
-                                longitude: currentLocation.longitude!,
-                                token: _token,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      shadowColor: Colors.transparent,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
+                    ),
+                    onPressed: isLoading
+                        ? null
+                        : () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => FaceRecognitionPage(
+                                  latitude: currentLocation.latitude,
+                                  longitude: currentLocation.longitude,
+                                  token: _token,
+                                ),
                               ),
-                            ),
-                          );
-                        },
-                  child: isLoading
-                      ? const CircularProgressIndicator(color: Colors.white)
-                      : const Text("Lanjutkan",
-                          style: TextStyle(fontSize: 16)),
+                            );
+                          },
+                    child: isLoading
+                        ? const CircularProgressIndicator(color: Colors.white)
+                        : const Text(
+                            "Lanjutkan",
+                            style: TextStyle(fontSize: 16, color: Colors.white),
+                          ),
+                  ),
                 ),
-              )
+              ),
             ],
           );
         },
