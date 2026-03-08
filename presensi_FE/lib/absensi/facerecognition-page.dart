@@ -216,7 +216,7 @@ class _FaceRecognitionPageState extends State<FaceRecognitionPage> {
 
       final response = await myHttp.post(
         // Uri.parse('http://192.168.187.131:8000/api/save-presensi'),
-        Uri.parse('http://3.27.35.240:8000/api/save-presensi'),
+        Uri.parse('http://3.27.35.240/api/save-presensi'),
         headers: {
           "Authorization": "Bearer ${widget.token}",
           "Content-Type": "application/json",

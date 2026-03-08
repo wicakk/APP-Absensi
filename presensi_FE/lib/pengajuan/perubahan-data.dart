@@ -94,7 +94,8 @@ class _FormPerubahanDataState extends State<FormPerubahanData> {
   bool loading = false;
   String? token;
 
-  final String url = "http://192.168.187.131:8000/api/perubahan-data/ajukan";
+  //final String url = "http://192.168.187.131:8000/api/perubahan-data/ajukan";
+  final String url = "http://3.27.35.240/api/perubahan-data/ajukan";
 
   @override
   void initState() {

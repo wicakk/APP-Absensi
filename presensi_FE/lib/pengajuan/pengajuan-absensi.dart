@@ -91,7 +91,8 @@ class _FormPengajuanAbsensiState extends State<FormPengajuanAbsensi> {
   bool loading = false;
   String? token;
 
-  final String url = "http://192.168.187.131:8000/api/ajukan-absensi"; // ✅ fix URL
+  // final String url = "http://192.168.187.131:8000/api/ajukan-absensi"; // ✅ fix URL
+  final String url = "http://3.27.35.240/api/ajukan-absensi"; // ✅ fix URL
 
   @override
   void initState() {

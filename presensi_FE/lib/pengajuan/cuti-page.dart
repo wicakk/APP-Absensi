@@ -480,7 +480,7 @@ class _RiwayatPengajuanState extends State<RiwayatPengajuan>
     with AutomaticKeepAliveClientMixin {
 
   //final String url = "http://192.168.187.131:8000/api/riwayat-cuti";
-  final String url = "http://3.27.35.240:8000/api/riwayat-cuti";
+  final String url = "http://3.27.35.240/api/riwayat-cuti";
 
   List<dynamic> riwayat = [];
   bool loading = true;
