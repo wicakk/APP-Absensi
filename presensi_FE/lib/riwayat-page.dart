@@ -37,7 +37,8 @@ class _RiwayatPageState extends State<RiwayatPage> {
 
     var response = await myHttp.get(
       // Uri.parse('http://10.0.2.2:8000/api/get-presensi'),
-      Uri.parse('http://192.168.187.131:8000/api/get-presensi'),
+      // Uri.parse('http://192.168.187.131:8000/api/get-presensi'),
+      Uri.parse('http://3.27.35.240:8000/api/get-presensi'),
       headers: headers,
     );
 

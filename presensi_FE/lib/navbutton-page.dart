@@ -141,10 +141,10 @@ class _MainPageState extends State<MainPage> {
 
             // _sheetItem(icon: Icons.receipt_long, title: "Reimbursement"),
             _sheetItem(icon: Icons.event, title: "Cuti", routeName: '/cuti'),
-            _sheetItem(icon: Icons.location_on, title: "Absensi"),
+            _sheetItem(icon: Icons.location_on, title: "Absensi", routeName: '/pengajuan-absensi'),
             // _sheetItem(icon: Icons.work_outline, title: "Perubahan Shift"),
-            _sheetItem(icon: Icons.access_time, title: "Lembur"),
-            _sheetItem(icon: Icons.person_outline, title: "Perubahan Data"),
+            _sheetItem(icon: Icons.access_time, title: "Lembur", routeName: '/lembur'),
+            _sheetItem(icon: Icons.person_outline, title: "Perubahan Data", routeName: '/perubahan-data'),
 
             const SizedBox(height: 20),
           ],

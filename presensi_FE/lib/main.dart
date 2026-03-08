@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'navbutton-page.dart';
 import 'pengajuan/cuti-page.dart';
 import 'login-page.dart';
+import 'pengajuan/perubahan-data.dart';
+import 'pengajuan/lembur-page.dart';
+import 'pengajuan/pengajuan-absensi.dart';
 
 void main() {
   runApp(const MyApp());
@@ -19,7 +22,10 @@ class MyApp extends StatelessWidget {
         '/': (context) => MainPage(),
         '/cuti': (context) => CutiPage(),
         '/login': (context) => const LoginPage(),
-        '/home': (context) => MainPage(), // ← Tambahkan ini
+        '/home': (context) => MainPage(), 
+        '/perubahan-data': (context) => const PerubahanDataPage(),
+        '/lembur': (context) => const LemburPage(),
+        '/pengajuan-absensi': (context) => const PengajuanAbsensiPage(),
       },
     );
   }

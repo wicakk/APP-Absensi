@@ -44,7 +44,8 @@ class _SimpanPageState extends State<SimpanPage> {
     final token = prefs.getString("token") ?? "";
 
     final response = await http.get(
-      Uri.parse("http://192.168.187.131:8000/api/jadwal"), // ← 10.0.2.2 untuk emulator, ganti IP asli untuk device fisik
+      // Uri.parse("http://192.168.187.131:8000/api/jadwal"), // ← 10.0.2.2 untuk emulator, ganti IP asli untuk device fisik
+      Uri.parse("http://3.27.35.240:8000/api/jadwal"), // ← 10.0.2.2 untuk emulator, ganti IP asli untuk device fisik
       headers: {
         "Authorization": "Bearer $token",
         "Content-Type": "application/json",

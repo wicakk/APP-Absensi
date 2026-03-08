@@ -69,7 +69,8 @@ class _JadwalPageState extends State<JadwalPage> {
     try {
       final response = await myHttp.get(
         // Uri.parse('http://10.0.2.2:8000/api/jadwal'),
-        Uri.parse('http://192.168.187.131:8000/api/jadwal'),
+        // Uri.parse('http://192.168.187.131:8000/api/jadwal'),
+        Uri.parse('http://3.27.35.240:8000/api/jadwal'),
         headers: {
           'Authorization': 'Bearer $_token',
           'Content-Type': 'application/json',

@@ -52,7 +52,8 @@ class _LoginPageState extends State<LoginPage> {
     try {
       var response = await myHttp.post(
         // Uri.parse('http://10.0.2.2:8000/api/login'),
-        Uri.parse('http://192.168.187.131:8000/api/login'),
+        // Uri.parse('http://192.168.187.131:8000/api/login'),
+        Uri.parse('http://3.27.35.240:8000/api/login'),
         body: {"email": email, "password": password},
       );
 

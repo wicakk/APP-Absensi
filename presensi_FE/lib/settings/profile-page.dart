@@ -29,7 +29,8 @@ class _ProfilePageState extends State<ProfilePage> {
     try {
       final res = await myHttp.get(
         // Uri.parse('http://10.0.2.2:8000/api/pegawai/profile'),
-        Uri.parse('http://192.168.187.131:8000/api/pegawai/profile'),
+        // Uri.parse('http://192.168.187.131:8000/api/pegawai/profile'),
+        Uri.parse('http://3.27.35.240:8000/api/pegawai/profile'),
         headers: {
           'Authorization': 'Bearer $token',
           'Accept': 'application/json',
@@ -56,7 +57,8 @@ class _ProfilePageState extends State<ProfilePage> {
     try {
       await myHttp.post(
         // Uri.parse('http://10.0.2.2:8000/api/logout'),
-        Uri.parse('http://192.168.187.131:8000/api/logout'),
+        // Uri.parse('http://192.168.187.131:8000/api/logout'),
+        Uri.parse('http://3.27.35.240:8000/api/logout'),
         headers: {
           'Authorization': 'Bearer $token',
           'Accept': 'application/json',
@@ -161,7 +163,8 @@ class _ProfilePageState extends State<ProfilePage> {
                           try {
                             final res = await myHttp.post(
                               // Uri.parse('http://10.0.2.2:8000/api/ubah-password'),
-                              Uri.parse('http://192.168.187.131:8000/api/ubah-password'),
+                              // Uri.parse('http://192.168.187.131:8000/api/ubah-password'),
+                              Uri.parse('http://3.27.35.240:8000/api/ubah-password'),
                               headers: {
                                 'Authorization': 'Bearer $token',
                                 'Content-Type': 'application/json',
