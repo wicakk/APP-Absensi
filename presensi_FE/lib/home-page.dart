@@ -23,6 +23,7 @@ class _HomePageState extends State<HomePage> {
   HomeResponseModel? homeResponseModel;
   Datum? hariIni;
   List<Datum> riwayat = [];
+  List<Map<String, dynamic>> pengumuman = []; // ✅ Tambah ini
 
   @override
   void initState() {
@@ -33,6 +34,7 @@ class _HomePageState extends State<HomePage> {
   Future<void> initData() async {
     await getUser();
     await getData();
+    await getPengumuman(); // ✅ Tambah ini
   }
 
   Future<void> getUser() async {
@@ -48,11 +50,9 @@ class _HomePageState extends State<HomePage> {
       String token = prefs.getString("token") ?? "";
 
       var response = await myHttp.get(
-        // Uri.parse('http://10.0.2.2:8000/api/get-presensi'),
-        // Uri.parse('http://192.168.187.131:8000/api/get-presensi'),
         Uri.parse('http://3.27.35.240/api/get-presensi'),
         headers: {
-          "Accept": "applicatsion/json",
+          "Accept": "application/json",
           "Authorization": "Bearer $token",
         },
       );
@@ -73,10 +73,35 @@ class _HomePageState extends State<HomePage> {
         }
       }
     } catch (e) {
-      debugPrint("ERROR: $e");
+      debugPrint("ERROR getData: $e");
     }
 
     setState(() => isLoading = false);
+  }
+
+  // ✅ Fetch pengumuman dari API
+  Future<void> getPengumuman() async {
+    try {
+      final prefs = await _prefs;
+      String token = prefs.getString("token") ?? "";
+
+      var response = await myHttp.get(
+        Uri.parse('http://3.27.35.240/api/pengumuman'),
+        headers: {
+          "Accept": "application/json",
+          "Authorization": "Bearer $token",
+        },
+      );
+
+      if (response.statusCode == 200) {
+        var result = jsonDecode(response.body);
+        setState(() {
+          pengumuman = List<Map<String, dynamic>>.from(result['data']);
+        });
+      }
+    } catch (e) {
+      debugPrint("ERROR getPengumuman: $e");
+    }
   }
 
   @override
@@ -87,7 +112,10 @@ class _HomePageState extends State<HomePage> {
           ? const Center(child: CircularProgressIndicator())
           : SafeArea(
               child: RefreshIndicator(
-                onRefresh: getData,
+                onRefresh: () async {
+                  await getData();
+                  await getPengumuman();
+                },
                 child: ListView(
                   padding: const EdgeInsets.all(20),
                   children: [
@@ -105,34 +133,17 @@ class _HomePageState extends State<HomePage> {
                     ),
 
                     const SizedBox(height: 20),
-
-                    // ================= TIME CARD =================
                     _buildTimeCard(context),
-
                     const SizedBox(height: 20),
-
-                    // ================= STATUS =================
                     _buildStatusCard(),
-
                     const SizedBox(height: 15),
-
-                    // ================= LOCATION =================
                     _buildLocationCard(),
-
                     const SizedBox(height: 20),
-
-                    // ================= BUTTON =================
                     _buildAbsenButton(),
-
                     const SizedBox(height: 30),
-
-                    // ================= RIWAYAT =================
                     _buildRiwayatSection(),
-
                     const SizedBox(height: 30),
-
-                    // ================= PENGUMUMAN =================
-                    _buildPengumumanSection(),
+                    _buildPengumumanSection(), // ✅ Sekarang dinamis
                   ],
                 ),
               ),
@@ -141,7 +152,6 @@ class _HomePageState extends State<HomePage> {
   }
 
   // ================= TIME CARD =================
-
   Widget _buildTimeCard(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -168,31 +178,21 @@ class _HomePageState extends State<HomePage> {
               color: Colors.white.withOpacity(0.2),
               shape: BoxShape.circle,
             ),
-            child: const Icon(
-              Icons.access_time,
-              color: Colors.white,
-              size: 28,
-            ),
+            child: const Icon(Icons.access_time, color: Colors.white, size: 28),
           ),
           const SizedBox(width: 20),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                "Waktu Saat Ini",
-                style: TextStyle(
-                  color: Colors.white70,
-                  fontSize: 14,
-                ),
-              ),
+              const Text("Waktu Saat Ini",
+                  style: TextStyle(color: Colors.white70, fontSize: 14)),
               const SizedBox(height: 5),
               Text(
                 TimeOfDay.now().format(context),
                 style: const TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
+                    fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white),
               ),
             ],
           ),
@@ -202,14 +202,11 @@ class _HomePageState extends State<HomePage> {
   }
 
   // ================= STATUS =================
-
   Widget _buildStatusCard() {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-      ),
+          color: Colors.white, borderRadius: BorderRadius.circular(16)),
       child: Row(
         children: [
           Icon(
@@ -231,29 +228,23 @@ class _HomePageState extends State<HomePage> {
   }
 
   // ================= LOCATION =================
-
   Widget _buildLocationCard() {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-      ),
+          color: Colors.white, borderRadius: BorderRadius.circular(16)),
       child: const Row(
         children: [
           Icon(Icons.location_on, color: Colors.blue),
           SizedBox(width: 10),
-          Text(
-            "Kantor Pusat, Jakarta",
-            style: TextStyle(fontWeight: FontWeight.bold),
-          ),
+          Text("Kantor Pusat, Jakarta",
+              style: TextStyle(fontWeight: FontWeight.bold)),
         ],
       ),
     );
   }
 
   // ================= ABSEN BUTTON =================
-
   Widget _buildAbsenButton() {
     return SizedBox(
       height: 50,
@@ -280,130 +271,164 @@ class _HomePageState extends State<HomePage> {
   }
 
   // ================= RIWAYAT =================
-
-Widget _buildRiwayatSection() {
-  return Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      const Text(
-        "Riwayat Presensi",
-        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-      ),
-      const SizedBox(height: 15),
-
-      if (riwayat.isEmpty)
-        const Center(child: Text("Belum ada riwayat"))
-      else
-        ...riwayat.take(2).map((item) {
-          return Container(
-            margin: const EdgeInsets.only(bottom: 12),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Column(
-              children: [
-
-                // ===== BARIS ATAS =====
-                Row(
-                  children: [
-                    Expanded(
-                      flex: 2,
-                      child: Text(
-                        item.tanggal ?? "-",
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      child: Text(
-                        item.masuk ?? "-",
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      child: Text(
-                        item.pulang ?? "-",
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 4),
-
-                // ===== BARIS BAWAH =====
-                Row(
-                  children: const [
-                    Expanded(flex: 2, child: SizedBox()),
-                    Expanded(
-                      child: Text(
-                        "Masuk",
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey,
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      child: Text(
-                        "Pulang",
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          );
-        }).toList(),
-    ],
-  );
-}
+  Widget _buildRiwayatSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text("Riwayat Presensi",
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 15),
+        if (riwayat.isEmpty)
+          const Center(child: Text("Belum ada riwayat"))
+        else
+          ...riwayat.take(2).map((item) {
+            return Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                  color: Colors.white, borderRadius: BorderRadius.circular(16)),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                          flex: 2,
+                          child: Text(item.tanggal ?? "-",
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.bold))),
+                      Expanded(
+                          child: Text(item.masuk ?? "-",
+                              textAlign: TextAlign.center,
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.bold))),
+                      Expanded(
+                          child: Text(item.pulang ?? "-",
+                              textAlign: TextAlign.center,
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.bold))),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: const [
+                      Expanded(flex: 2, child: SizedBox()),
+                      Expanded(
+                          child: Text("Masuk",
+                              textAlign: TextAlign.center,
+                              style:
+                                  TextStyle(fontSize: 12, color: Colors.grey))),
+                      Expanded(
+                          child: Text("Pulang",
+                              textAlign: TextAlign.center,
+                              style:
+                                  TextStyle(fontSize: 12, color: Colors.grey))),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
+      ],
+    );
+  }
 
   // ================= PENGUMUMAN =================
-
   Widget _buildPengumumanSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          "Pengumuman",
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-        ),
+        const Text("Pengumuman",
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
         const SizedBox(height: 10),
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: const Row(
-            children: [
-              Icon(Icons.campaign, color: Color(0xFF2962FF)),
-              SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  "Libur nasional tanggal 17 Agustus 2026.",
-                  style: TextStyle(fontSize: 14),
-                ),
+
+        if (pengumuman.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+                color: Colors.white, borderRadius: BorderRadius.circular(16)),
+            child: const Row(
+              children: [
+                Icon(Icons.campaign, color: Color(0xFF2962FF)),
+                SizedBox(width: 12),
+                Text("Tidak ada pengumuman", style: TextStyle(fontSize: 14)),
+              ],
+            ),
+          )
+        else
+          ...pengumuman.map((item) {
+            // Badge warna berdasarkan prioritas
+            Color badgeColor = Colors.grey;
+            if (item['prioritas'] == 'tinggi') badgeColor = Colors.red;
+            if (item['prioritas'] == 'sedang') badgeColor = Colors.orange;
+            if (item['prioritas'] == 'rendah') badgeColor = Colors.green;
+
+            return Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: badgeColor.withOpacity(0.3)),
               ),
-            ],
-          ),
-        ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.campaign, color: const Color(0xFF2962FF)),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Judul + badge prioritas
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                item['judul'] ?? "-",
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold, fontSize: 14),
+                              ),
+                            ),
+                            if (item['prioritas'] != null)
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: badgeColor.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  item['prioritas'],
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      color: badgeColor,
+                                      fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        // Isi
+                        Text(
+                          item['isi'] ?? "-",
+                          style: const TextStyle(
+                              fontSize: 13, color: Colors.black87),
+                        ),
+                        const SizedBox(height: 6),
+                        // Tanggal
+                        if (item['tanggal_mulai'] != null)
+                          Text(
+                            "📅 ${item['tanggal_mulai']}${item['tanggal_berakhir'] != null ? ' – ${item['tanggal_berakhir']}' : ''}",
+                            style: const TextStyle(
+                                fontSize: 12, color: Colors.grey),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
       ],
     );
   }
