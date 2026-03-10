@@ -16,12 +16,21 @@ class _RiwayatPageState extends State<RiwayatPage> {
   late Future<String> _token;
   late Future<void> _future;
 
-  List<Datum> riwayat = [];
+  List<Datum> allRiwayat = []; // semua data dari API
+  List<Datum> filteredRiwayat = []; // data setelah filter bulan
+
+  List<String> bulanList = []; // daftar bulan yang tersedia
+  String? selectedBulan; // bulan yang dipilih
+
   int totalHadir = 0;
   int totalTepat = 0;
   int totalTerlambat = 0;
 
-  String selectedBulan = "Desember 2025";
+  // Map bulan angka → nama Indonesia
+  static const _namaBulan = [
+    '', 'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+  ];
 
   @override
   void initState() {
@@ -36,8 +45,6 @@ class _RiwayatPageState extends State<RiwayatPage> {
     };
 
     var response = await myHttp.get(
-      // Uri.parse('http://10.0.2.2:8000/api/get-presensi'),
-      // Uri.parse('http://192.168.187.131:8000/api/get-presensi'),
       Uri.parse('http://3.27.35.240/api/get-presensi'),
       headers: headers,
     );
@@ -45,24 +52,91 @@ class _RiwayatPageState extends State<RiwayatPage> {
     var result = jsonDecode(response.body);
     HomeResponseModel model = HomeResponseModel.fromJson(result);
 
-    riwayat.clear();
-    totalHadir = 0;
-    totalTepat = 0;
-    totalTerlambat = 0;
+    allRiwayat.clear();
 
     for (var element in model.data) {
       if (!element.isHariIni) {
-        riwayat.add(element);
-        totalHadir++;
-        if (element.isTerlambat == true) {
-          totalTerlambat++;
-        } else {
-          totalTepat++;
-        }
+        allRiwayat.add(element);
       }
     }
 
-    setState(() {}); // update UI setelah data diambil
+    // Generate daftar bulan unik dari data, diurutkan terbaru dulu
+    final bulanSet = <String>{};
+    for (var item in allRiwayat) {
+      final key = _getBulanKey(item.tanggal);
+      if (key != null) bulanSet.add(key);
+    }
+
+    bulanList = bulanSet.toList()
+      ..sort((a, b) {
+        // Sort descending: bulan terbaru di atas
+        final partsA = a.split('-');
+        final partsB = b.split('-');
+        final dateA = DateTime(int.parse(partsA[0]), int.parse(partsA[1]));
+        final dateB = DateTime(int.parse(partsB[0]), int.parse(partsB[1]));
+        return dateB.compareTo(dateA);
+      });
+
+    // Default pilih bulan terbaru
+    if (bulanList.isNotEmpty) {
+      selectedBulan = bulanList.first;
+    }
+
+    _filterByBulan();
+  }
+
+  // Ambil key "yyyy-MM" dari tanggal "yyyy-MM-dd"
+  String? _getBulanKey(String tanggal) {
+    try {
+      final parts = tanggal.split('-');
+      if (parts.length >= 2) return '${parts[0]}-${parts[1]}';
+    } catch (_) {}
+    return null;
+  }
+
+  // Format key "yyyy-MM" → label "Desember 2025"
+  String _formatBulanLabel(String key) {
+    try {
+      final parts = key.split('-');
+      final bulan = int.parse(parts[1]);
+      final tahun = parts[0];
+      return '${_namaBulan[bulan]} $tahun';
+    } catch (_) {
+      return key;
+    }
+  }
+
+  // Format tanggal "2025-12-01" → "01 Desember 2025"
+  String _formatTanggal(String tanggal) {
+    try {
+      final parts = tanggal.split('-');
+      final hari = parts[2].padLeft(2, '0');
+      final bulan = int.parse(parts[1]);
+      final tahun = parts[0];
+      return '$hari ${_namaBulan[bulan]} $tahun';
+    } catch (_) {
+      return tanggal;
+    }
+  }
+
+  void _filterByBulan() {
+    if (selectedBulan == null) {
+      filteredRiwayat = List.from(allRiwayat);
+    } else {
+      filteredRiwayat = allRiwayat
+          .where((item) => _getBulanKey(item.tanggal) == selectedBulan)
+          .toList();
+
+      // Urutkan terbaru di atas
+      filteredRiwayat.sort((a, b) => b.tanggal.compareTo(a.tanggal));
+    }
+
+    // Hitung summary
+    totalHadir = filteredRiwayat.length;
+    totalTerlambat = filteredRiwayat.where((e) => e.isTerlambat == true).length;
+    totalTepat = totalHadir - totalTerlambat;
+
+    setState(() {});
   }
 
   @override
@@ -89,7 +163,7 @@ class _RiwayatPageState extends State<RiwayatPage> {
               padding: const EdgeInsets.all(16),
               children: [
 
-                // Dropdown Bulan
+                // Dropdown Bulan — otomatis dari data API
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   decoration: BoxDecoration(
@@ -103,22 +177,27 @@ class _RiwayatPageState extends State<RiwayatPage> {
                       )
                     ],
                   ),
-                  child: DropdownButton<String>(
-                    value: selectedBulan,
-                    isExpanded: true,
-                    underline: const SizedBox(),
-                    items: ["Desember 2025"]
-                        .map((e) => DropdownMenuItem(
-                              value: e,
-                              child: Text(e),
-                            ))
-                        .toList(),
-                    onChanged: (value) {
-                      setState(() {
-                        selectedBulan = value!;
-                      });
-                    },
-                  ),
+                  child: bulanList.isEmpty
+                      ? const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 14),
+                          child: Text("Tidak ada data", style: TextStyle(color: Colors.grey)),
+                        )
+                      : DropdownButton<String>(
+                          value: selectedBulan,
+                          isExpanded: true,
+                          underline: const SizedBox(),
+                          icon: const Icon(Icons.keyboard_arrow_down),
+                          items: bulanList.map((key) {
+                            return DropdownMenuItem(
+                              value: key,
+                              child: Text(_formatBulanLabel(key)),
+                            );
+                          }).toList(),
+                          onChanged: (value) {
+                            setState(() => selectedBulan = value);
+                            _filterByBulan();
+                          },
+                        ),
                 ),
 
                 const SizedBox(height: 20),
@@ -135,15 +214,15 @@ class _RiwayatPageState extends State<RiwayatPage> {
                 const SizedBox(height: 25),
 
                 // List Riwayat
-                if (riwayat.isEmpty)
+                if (filteredRiwayat.isEmpty)
                   const Center(
                     child: Padding(
                       padding: EdgeInsets.all(20),
-                      child: Text("Belum ada riwayat"),
+                      child: Text("Belum ada riwayat di bulan ini"),
                     ),
                   )
                 else
-                  ...riwayat.map((item) {
+                  ...filteredRiwayat.map((item) {
                     bool terlambat = item.isTerlambat == true;
 
                     return Container(
@@ -171,7 +250,7 @@ class _RiwayatPageState extends State<RiwayatPage> {
                                   size: 16, color: Colors.blue),
                               const SizedBox(width: 8),
                               Text(
-                                item.tanggal,
+                                _formatTanggal(item.tanggal),
                                 style: const TextStyle(
                                   fontWeight: FontWeight.bold,
                                 ),
@@ -181,7 +260,7 @@ class _RiwayatPageState extends State<RiwayatPage> {
 
                           const SizedBox(height: 15),
 
-                          // Jam
+                          // Jam & Status
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
@@ -197,15 +276,11 @@ class _RiwayatPageState extends State<RiwayatPage> {
                                   borderRadius: BorderRadius.circular(20),
                                 ),
                                 child: Text(
-                                  terlambat
-                                      ? "Terlambat"
-                                      : "Tepat Waktu",
+                                  terlambat ? "Terlambat" : "Tepat Waktu",
                                   style: TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.w600,
-                                    color: terlambat
-                                        ? Colors.orange
-                                        : Colors.green,
+                                    color: terlambat ? Colors.orange : Colors.green,
                                   ),
                                 ),
                               )
@@ -223,17 +298,13 @@ class _RiwayatPageState extends State<RiwayatPage> {
     );
   }
 
-  // ============================
-  // Helper Widget
-  // ============================
-
   Widget _modernSummary(String title, int value, Color color) {
     return Expanded(
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 4),
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.15), // background sesuai warna
+          color: color.withOpacity(0.15),
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(

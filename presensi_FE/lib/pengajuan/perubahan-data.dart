@@ -396,7 +396,8 @@ class RiwayatPerubahanData extends StatefulWidget {
 class _RiwayatPerubahanDataState extends State<RiwayatPerubahanData>
     with AutomaticKeepAliveClientMixin {
 
-  final String url = "http://192.168.187.131:8000/api/perubahan-data/riwayat";
+  //final String url = "http://192.168.187.131/api/perubahan-data/riwayat";
+  final String url = "http://3.27.35.240/api/perubahan-data/riwayat";
 
   List<dynamic> riwayat = [];
   bool loading = true;

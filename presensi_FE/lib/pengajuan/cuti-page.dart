@@ -210,7 +210,7 @@ class _FormPengajuanState extends State<FormPengajuan> {
   String? token;
 
   // final String url = "http://192.168.187.131:8000/api/ajukan-cuti";
-  final String url = "http://3.27.35.240:8000/api/ajukan-cuti";
+  final String url = "http://3.27.35.240/api/ajukan-cuti";
 
   @override
   void initState() {

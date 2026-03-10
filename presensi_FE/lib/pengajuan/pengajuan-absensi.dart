@@ -379,7 +379,8 @@ class RiwayatPengajuanAbsensi extends StatefulWidget { // ✅ fix class name
 class _RiwayatPengajuanAbsensiState extends State<RiwayatPengajuanAbsensi>
     with AutomaticKeepAliveClientMixin {
 
-  final String url = "http://192.168.187.131:8000/api/riwayat-absensi"; // ✅ fix URL
+  // final String url = "http://192.168.187.131:8000/api/riwayat-absensi"; // ✅ fix URL
+  final String url = "http://3.27.35.240/api/riwayat-absensi"; // ✅ fix URL
 
   List<dynamic> riwayat = [];
   bool loading = true;

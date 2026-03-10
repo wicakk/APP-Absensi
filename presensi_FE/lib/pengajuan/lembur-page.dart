@@ -392,7 +392,8 @@ class RiwayatLembur extends StatefulWidget {
 class _RiwayatLemburState extends State<RiwayatLembur>
     with AutomaticKeepAliveClientMixin {
 
-  final String url = "http://192.168.187.131:8000/api/riwayat-lembur";
+  //final String url = "http://192.168.187.131:8000/api/riwayat-lembur";
+  final String url = "http://3.27.35.240/api/riwayat-lembur";
 
   List<dynamic> riwayat = [];
   bool loading = true;
