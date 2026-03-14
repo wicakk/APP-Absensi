@@ -50,7 +50,7 @@ class _HomePageState extends State<HomePage> {
       String token = prefs.getString("token") ?? "";
 
       var response = await myHttp.get(
-        Uri.parse('http://3.27.35.240/api/get-presensi'),
+        Uri.parse('http://54.252.215.200/api/get-presensi'),
         headers: {
           "Accept": "application/json",
           "Authorization": "Bearer $token",
@@ -86,7 +86,7 @@ class _HomePageState extends State<HomePage> {
       String token = prefs.getString("token") ?? "";
 
       var response = await myHttp.get(
-        Uri.parse('http://3.27.35.240/api/pengumuman'),
+        Uri.parse('http://54.252.215.200/api/pengumuman'),
         headers: {
           "Accept": "application/json",
           "Authorization": "Bearer $token",
