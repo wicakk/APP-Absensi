@@ -36,9 +36,10 @@ dependencies:
   google_mlkit_face_detection: ^0.13.1
   shared_preferences: ^2.2.2
   http: ^1.2.0
-  # location: ^5.0.3
+  location: ^5.0.3
   geolocator: ^10.1.0
   geolocator_android: 4.3.0
+  image: ^4.1.7
   syncfusion_flutter_maps: ^24.1.41
   file_picker: ^6.1.1
   # intl: ^0.18.1

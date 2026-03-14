@@ -1,8 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
+import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:http/http.dart' as myHttp;
+import 'package:image/image.dart' as img; // tambahkan: image: ^4.1.7 di pubspec.yaml
 
 class FaceRecognitionPage extends StatefulWidget {
   final double latitude;
@@ -20,124 +24,322 @@ class FaceRecognitionPage extends StatefulWidget {
   State<FaceRecognitionPage> createState() => _FaceRecognitionPageState();
 }
 
-class _FaceRecognitionPageState extends State<FaceRecognitionPage> {
+class _FaceRecognitionPageState extends State<FaceRecognitionPage>
+    with SingleTickerProviderStateMixin {
   CameraController? _cameraController;
-  List<CameraDescription>? _cameras;
-
   bool _isCameraReady = false;
+  bool _isFaceDetected = false;
+  bool _isDetecting = false;
+  bool _isProcessing = false;
   bool _isLoading = false;
+  String _statusText = "Posisikan wajah di dalam lingkaran";
+
+  late AnimationController _animController;
+  late Animation<double> _pulseAnimation;
+
   XFile? _capturedImage;
+
+  final FaceDetector _faceDetector = FaceDetector(
+    options: FaceDetectorOptions(
+      enableTracking: false,
+      enableClassification: false,
+      performanceMode: FaceDetectorMode.fast,
+      minFaceSize: 0.15,
+    ),
+  );
 
   @override
   void initState() {
     super.initState();
+
+    _animController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    )..repeat(reverse: true);
+
+    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.03).animate(
+      CurvedAnimation(parent: _animController, curve: Curves.easeInOut),
+    );
+
     _initCamera();
   }
 
+  /* ================= INIT CAMERA ================= */
+
   Future<void> _initCamera() async {
     try {
-      _cameras = await availableCameras();
-      debugPrint("Cameras found: ${_cameras?.length}");
+      final cameras = await availableCameras();
 
-      final frontCamera = _cameras!.firstWhere(
+      final frontCamera = cameras.firstWhere(
         (cam) => cam.lensDirection == CameraLensDirection.front,
-        orElse: () => _cameras!.first,
+        orElse: () => cameras.first,
       );
 
       _cameraController = CameraController(
         frontCamera,
         ResolutionPreset.medium,
         enableAudio: false,
+        imageFormatGroup: Platform.isAndroid
+            ? ImageFormatGroup.nv21
+            : ImageFormatGroup.bgra8888,
       );
 
       await _cameraController!.initialize();
-      debugPrint("Camera initialized OK");
 
       if (!mounted) return;
+
       setState(() => _isCameraReady = true);
+      _cameraController!.startImageStream(_processCameraImage);
     } catch (e) {
-      debugPrint("ERROR INIT CAMERA: $e");
-      if (mounted) showMessage("Gagal membuka kamera: $e");
+      debugPrint("❌ Init camera error: $e");
+      _setStatus("Gagal membuka kamera");
     }
   }
 
-  Future<void> _takePicture() async {
-    if (_cameraController == null || !_cameraController!.value.isInitialized) return;
+  /* ================= FACE DETECTION ================= */
+
+  Future<void> _processCameraImage(CameraImage image) async {
+    if (_isDetecting || _isProcessing) return;
+    _isDetecting = true;
 
     try {
-      final XFile file = await _cameraController!.takePicture();
-      debugPrint("Photo taken: ${file.path}");
-      setState(() => _capturedImage = file);
+      final camera = _cameraController!.description;
+
+      final InputImage inputImage;
+
+      if (Platform.isAndroid) {
+        inputImage = InputImage.fromBytes(
+          bytes: image.planes[0].bytes,
+          metadata: InputImageMetadata(
+            size: Size(image.width.toDouble(), image.height.toDouble()),
+            rotation: _rotationFromSensorOrientation(camera.sensorOrientation),
+            format: InputImageFormat.nv21,
+            bytesPerRow: image.planes[0].bytesPerRow,
+          ),
+        );
+      } else {
+        inputImage = InputImage.fromBytes(
+          bytes: image.planes[0].bytes,
+          metadata: InputImageMetadata(
+            size: Size(image.width.toDouble(), image.height.toDouble()),
+            rotation: InputImageRotation.rotation0deg,
+            format: InputImageFormat.bgra8888,
+            bytesPerRow: image.planes[0].bytesPerRow,
+          ),
+        );
+      }
+
+      final faces = await _faceDetector.processImage(inputImage);
+      debugPrint("👤 Faces detected: ${faces.length}");
+
+      if (mounted) setState(() => _isFaceDetected = faces.isNotEmpty);
+
+      if (faces.isNotEmpty && !_isProcessing) {
+        _isProcessing = true;
+        _setStatus("Wajah terdeteksi, mengambil foto...");
+
+        // Beri jeda supaya user lihat lingkaran hijau dulu
+        await Future.delayed(const Duration(milliseconds: 800));
+
+        if (!mounted) return;
+
+        await _takePicture();
+
+        if (_capturedImage != null) {
+          await _submitPresensi();
+        } else {
+          _resetAndRetry("Gagal ambil foto, coba lagi");
+        }
+      }
     } catch (e) {
-      debugPrint("ERROR TAKE PICTURE: $e");
-      showMessage("Gagal ambil foto: $e");
+      debugPrint("❌ Face detection error: $e");
+      _isProcessing = false;
+    } finally {
+      _isDetecting = false;
     }
   }
 
-  Future<void> _submitPresensi() async {
-    if (_capturedImage == null) {
-      showMessage("Ambil foto selfie terlebih dahulu");
+  /* ================= HELPERS ================= */
+
+  InputImageRotation _rotationFromSensorOrientation(int sensorOrientation) {
+    switch (sensorOrientation) {
+      case 90:
+        return InputImageRotation.rotation90deg;
+      case 180:
+        return InputImageRotation.rotation180deg;
+      case 270:
+        return InputImageRotation.rotation270deg;
+      default:
+        return InputImageRotation.rotation0deg;
+    }
+  }
+
+  void _setStatus(String text) {
+    debugPrint("📋 Status: $text");
+    if (mounted) setState(() => _statusText = text);
+  }
+
+  /// Reset semua state dan restart image stream untuk coba ulang
+  void _resetAndRetry(String message) {
+    debugPrint("🔄 Reset & retry: $message");
+    _isProcessing = false;
+    _capturedImage = null;
+    if (mounted) setState(() => _isFaceDetected = false);
+    _setStatus(message);
+
+    Future.delayed(const Duration(seconds: 1), () {
+      if (mounted &&
+          _cameraController != null &&
+          _cameraController!.value.isInitialized &&
+          !_cameraController!.value.isStreamingImages) {
+        _cameraController!.startImageStream(_processCameraImage);
+        _setStatus("Posisikan wajah di dalam lingkaran");
+      }
+    });
+  }
+
+  /* ================= TAKE PICTURE ================= */
+
+  Future<void> _takePicture() async {
+    if (_cameraController == null || !_cameraController!.value.isInitialized) {
       return;
     }
 
-    setState(() => _isLoading = true);
+    try {
+      if (_cameraController!.value.isStreamingImages) {
+        await _cameraController!.stopImageStream();
+        // Beri jeda supaya stream benar-benar berhenti
+        await Future.delayed(const Duration(milliseconds: 300));
+      }
+
+      _capturedImage = await _cameraController!.takePicture();
+      debugPrint("📸 Foto diambil: ${_capturedImage!.path}");
+    } catch (e) {
+      debugPrint("❌ Gagal ambil foto: $e");
+      _capturedImage = null;
+    }
+  }
+
+  /* ================= COMPRESS IMAGE ================= */
+
+  /// Kompres foto agar tidak terlalu besar → cegah timeout
+  Future<String> _compressToBase64(String filePath) async {
+    final originalBytes = await File(filePath).readAsBytes();
+    debugPrint(
+        "📦 Ukuran asli: ${(originalBytes.length / 1024).toStringAsFixed(1)} KB");
+
+    final decoded = img.decodeImage(originalBytes);
+    if (decoded == null) {
+      debugPrint("⚠️ Gagal decode, kirim apa adanya");
+      return base64Encode(originalBytes);
+    }
+
+    // Resize max 800px lebar, JPEG quality 65%
+    final resized = img.copyResize(decoded, width: 800);
+    final compressed = img.encodeJpg(resized, quality: 65);
+
+    debugPrint(
+        "📦 Setelah kompres: ${(compressed.length / 1024).toStringAsFixed(1)} KB");
+
+    return base64Encode(compressed);
+  }
+
+  /* ================= SEND TO API ================= */
+
+  Future<void> _submitPresensi() async {
+    if (_capturedImage == null) {
+      _resetAndRetry("Foto tidak tersedia");
+      return;
+    }
+
+    _setStatus("Menyimpan presensi...");
+    if (mounted) setState(() => _isLoading = true);
 
     try {
-      final bytes = await File(_capturedImage!.path).readAsBytes();
-      final base64Image = base64Encode(bytes);
+      final base64Image = await _compressToBase64(_capturedImage!.path);
 
-      debugPrint("Sending to API...");
-      debugPrint("Lat: ${widget.latitude}, Lng: ${widget.longitude}");
-      debugPrint("Token: ${widget.token.substring(0, 10)}...");
+      debugPrint("🌐 POST ke API...");
+      debugPrint("   Lat: ${widget.latitude}, Lng: ${widget.longitude}");
 
-      final response = await myHttp.post(
-        Uri.parse('http://54.252.215.200/api/save-presensi'),
-        headers: {
-          "Authorization": "Bearer ${widget.token}",
-          "Content-Type": "application/json",
-        },
-        body: jsonEncode({
-          "latitude": widget.latitude,
-          "longitude": widget.longitude,
-          "foto": base64Image,
-        }),
-      ).timeout(const Duration(seconds: 30));
+      final response = await myHttp
+          .post(
+            Uri.parse('http://54.252.215.200/api/save-presensi'),
+            headers: {
+              "Authorization": "Bearer ${widget.token}",
+              "Content-Type": "application/json",
+              // ✅ Penting: paksa server return JSON bukan HTML error page
+              "Accept": "application/json",
+            },
+            body: jsonEncode({
+              "latitude": widget.latitude,
+              "longitude": widget.longitude,
+              "foto": base64Image,
+            }),
+          )
+          .timeout(
+            const Duration(seconds: 30),
+            onTimeout: () => throw Exception("Timeout 30 detik"),
+          );
 
-      debugPrint("STATUS CODE: ${response.statusCode}");
-      debugPrint("BODY: ${response.body}");
+      // ✅ Log lengkap untuk debug
+      debugPrint("📡 Status code: ${response.statusCode}");
+      debugPrint("📡 Response: ${response.body}");
 
       if (!mounted) return;
 
-      final result = jsonDecode(response.body);
-      showMessage(result["message"] ?? "Terjadi kesalahan");
+      // ✅ Tangani response bukan JSON dengan aman (misal HTML 500 error)
+      Map<String, dynamic> result;
+      try {
+        result = jsonDecode(response.body);
+      } catch (_) {
+        debugPrint("❌ Response bukan JSON valid: ${response.body}");
+        _resetAndRetry("Server error (${response.statusCode})");
+        return;
+      }
 
-      if (result["success"] == true) {
-        Navigator.popUntil(context, (route) => route.isFirst);
+      final bool success = result["success"] == true;
+      final String message = result["message"] ?? "Terjadi kesalahan";
+
+      showMessage(message);
+
+      if (success) {
+        debugPrint("✅ Presensi berhasil disimpan!");
+        if (mounted) {
+          Navigator.of(context).popUntil((route) => route.isFirst);
+        }
+      } else {
+        debugPrint("❌ Server tolak: $message");
+        _resetAndRetry(message);
       }
     } catch (e) {
-      debugPrint("ERROR SIMPAN: $e");
+      debugPrint("❌ Submit error: $e");
       if (mounted) showMessage("Error: ${e.toString()}");
+      _resetAndRetry("Gagal koneksi, coba lagi");
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  void _retake() {
-    setState(() => _capturedImage = null);
-  }
+  /* ================= MESSAGE ================= */
 
   void showMessage(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), duration: const Duration(seconds: 4)),
+      SnackBar(content: Text(message), duration: const Duration(seconds: 3)),
     );
   }
 
+  /* ================= DISPOSE ================= */
+
   @override
   void dispose() {
+    _animController.dispose();
     _cameraController?.dispose();
+    _faceDetector.close();
     super.dispose();
   }
+
+  /* ================= UI ================= */
 
   @override
   Widget build(BuildContext context) {
@@ -145,10 +347,11 @@ class _FaceRecognitionPageState extends State<FaceRecognitionPage> {
       backgroundColor: Colors.black,
       body: Column(
         children: [
-          // HEADER
+          // ── HEADER ──
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.only(top: 50, left: 20, right: 20, bottom: 20),
+            padding: const EdgeInsets.only(
+                top: 50, left: 20, right: 20, bottom: 20),
             decoration: const BoxDecoration(
               color: Colors.red,
               borderRadius: BorderRadius.vertical(bottom: Radius.circular(20)),
@@ -172,161 +375,139 @@ class _FaceRecognitionPageState extends State<FaceRecognitionPage> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 5),
-                const Text(
-                  "Langkah 2 dari 2 — Selfie",
-                  style: TextStyle(fontSize: 14, color: Colors.white70),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Icon(
+                      _isFaceDetected ? Icons.check_circle : Icons.face,
+                      color: _isFaceDetected ? Colors.greenAccent : Colors.white70,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _isLoading
+                            ? "Menyimpan presensi..."
+                            : _isFaceDetected
+                                ? "Wajah terdeteksi ✓"
+                                : "Arahkan wajah ke kamera...",
+                        style: TextStyle(
+                          color: _isFaceDetected
+                              ? Colors.greenAccent
+                              : Colors.white70,
+                          fontWeight: _isFaceDetected
+                              ? FontWeight.bold
+                              : FontWeight.normal,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
 
-          // KAMERA / PREVIEW
-          Expanded(child: _buildCameraArea()),
+          // ── KAMERA ──
+          Expanded(
+            child: !_isCameraReady || _cameraController == null
+                ? const Center(
+                    child: CircularProgressIndicator(color: Colors.white))
+                : Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      CameraPreview(_cameraController!),
+                      CustomPaint(painter: _OvalOverlayPainter()),
+                      Center(
+                        child: AnimatedBuilder(
+                          animation: _pulseAnimation,
+                          builder: (context, child) {
+                            return Transform.scale(
+                              scale: _isFaceDetected ? _pulseAnimation.value : 1.0,
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 300),
+                                width: 220,
+                                height: 280,
+                                decoration: BoxDecoration(
+                                  border: Border.all(
+                                    color: _isFaceDetected
+                                        ? Colors.greenAccent
+                                        : Colors.white54,
+                                    width: _isFaceDetected ? 4 : 2.5,
+                                  ),
+                                  borderRadius: BorderRadius.circular(140),
+                                  boxShadow: _isFaceDetected
+                                      ? [
+                                          BoxShadow(
+                                            color: Colors.greenAccent
+                                                .withOpacity(0.4),
+                                            blurRadius: 20,
+                                            spreadRadius: 4,
+                                          )
+                                        ]
+                                      : [],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+          ),
 
-          // TOMBOL BAWAH
+          // ── FOOTER STATUS ──
           Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
             color: Colors.black,
-            padding: const EdgeInsets.all(20),
-            child: _capturedImage != null
-                ? _buildAfterCaptureButtons()
-                : _buildCaptureButton(),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCameraArea() {
-    if (_capturedImage != null) {
-      return Stack(
-        fit: StackFit.expand,
-        children: [
-          Image.file(File(_capturedImage!.path), fit: BoxFit.cover),
-          Positioned(
-            top: 16,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.green.withOpacity(0.85),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: const Text(
-                  "✓ Foto siap dikirim",
-                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                ),
-              ),
-            ),
-          ),
-        ],
-      );
-    }
-
-    if (!_isCameraReady || _cameraController == null) {
-      return const Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularProgressIndicator(color: Colors.white),
-            SizedBox(height: 12),
-            Text("Membuka kamera...", style: TextStyle(color: Colors.white70)),
-          ],
-        ),
-      );
-    }
-
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        CameraPreview(_cameraController!),
-        Center(
-          child: Container(
-            width: 220,
-            height: 280,
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.white54, width: 2.5),
-              borderRadius: BorderRadius.circular(140),
-            ),
-          ),
-        ),
-        const Positioned(
-          bottom: 16,
-          left: 0,
-          right: 0,
-          child: Center(
-            child: Text(
-              "Posisikan wajah lalu tekan tombol",
-              style: TextStyle(color: Colors.white70, fontSize: 13),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildCaptureButton() {
-    return GestureDetector(
-      onTap: _isCameraReady ? _takePicture : null,
-      child: Container(
-        width: 70,
-        height: 70,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: _isCameraReady ? Colors.white : Colors.white24,
-          border: Border.all(color: Colors.white54, width: 3),
-        ),
-        child: Icon(
-          Icons.camera_alt,
-          color: _isCameraReady ? Colors.black87 : Colors.white38,
-          size: 32,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAfterCaptureButtons() {
-    return Row(
-      children: [
-        Expanded(
-          child: OutlinedButton.icon(
-            style: OutlinedButton.styleFrom(
-              foregroundColor: Colors.white,
-              side: const BorderSide(color: Colors.white54),
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-            onPressed: _isLoading ? null : _retake,
-            icon: const Icon(Icons.refresh),
-            label: const Text("Ulangi"),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          flex: 2,
-          child: ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-            onPressed: _isLoading ? null : _submitPresensi,
-            icon: _isLoading
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+            child: _isLoading
+                ? Column(
+                    children: [
+                      const CircularProgressIndicator(color: Colors.white),
+                      const SizedBox(height: 10),
+                      Text(
+                        _statusText,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.white70),
+                      ),
+                    ],
                   )
-                : const Icon(Icons.login),
-            label: Text(
-              _isLoading ? "Menyimpan..." : "Absen Masuk",
-              style: const TextStyle(fontSize: 15),
-            ),
+                : Text(
+                    _statusText,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: _isFaceDetected ? Colors.greenAccent : Colors.white54,
+                    ),
+                  ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
+}
+
+/* ================= OVAL OVERLAY PAINTER ================= */
+
+class _OvalOverlayPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = Colors.black.withOpacity(0.45);
+
+    final ovalRect = Rect.fromCenter(
+      center: Offset(size.width / 2, size.height / 2),
+      width: 224,
+      height: 284,
+    );
+
+    final fullRect = Rect.fromLTWH(0, 0, size.width, size.height);
+    final path = Path()
+      ..addRect(fullRect)
+      ..addOval(ovalRect)
+      ..fillType = PathFillType.evenOdd;
+
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
