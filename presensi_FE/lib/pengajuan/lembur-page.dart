@@ -94,7 +94,7 @@ class _FormLemburState extends State<FormLembur> {
   String? token;
 
   // final String url = "http://192.168.187.131:8000/api/ajukan-lembur";
-  final String url = "http://54.252.215.200/api/ajukan-lembur";
+  final String url = "http://${dotenv.env['APP_IP']}/api/ajukan-lembur";
 
   @override
   void initState() {
@@ -393,7 +393,7 @@ class _RiwayatLemburState extends State<RiwayatLembur>
     with AutomaticKeepAliveClientMixin {
 
   //final String url = "http://192.168.187.131:8000/api/riwayat-lembur";
-  final String url = "http://54.252.215.200/api/riwayat-lembur";
+  final String url = "http://${dotenv.env['APP_IP']}/api/riwayat-lembur";
 
   List<dynamic> riwayat = [];
   bool loading = true;

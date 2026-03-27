@@ -263,7 +263,7 @@ class _FaceRecognitionPageState extends State<FaceRecognitionPage>
 
       final response = await myHttp
           .post(
-            Uri.parse('http://54.252.215.200/api/save-presensi'),
+            Uri.parse('http://${dotenv.env['APP_IP']}/api/save-presensi'),
             headers: {
               "Authorization": "Bearer ${widget.token}",
               "Content-Type": "application/json",

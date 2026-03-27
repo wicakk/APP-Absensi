@@ -30,7 +30,7 @@ class _ProfilePageState extends State<ProfilePage> {
       final res = await myHttp.get(
         // Uri.parse('http://10.0.2.2:8000/api/pegawai/profile'),
         // Uri.parse('http://192.168.187.131:8000/api/pegawai/profile'),
-        Uri.parse('http://54.252.215.200/api/pegawai/profile'),
+        Uri.parse('http://${dotenv.env['APP_IP']}/api/pegawai/profile'),
         headers: {
           'Authorization': 'Bearer $token',
           'Accept': 'application/json',
@@ -58,7 +58,7 @@ class _ProfilePageState extends State<ProfilePage> {
       await myHttp.post(
         // Uri.parse('http://10.0.2.2:8000/api/logout'),
         // Uri.parse('http://192.168.187.131:8000/api/logout'),
-        Uri.parse('http://54.252.215.200/api/logout'),
+        Uri.parse('http://${dotenv.env['APP_IP']}/api/logout'),
         headers: {
           'Authorization': 'Bearer $token',
           'Accept': 'application/json',
@@ -164,7 +164,7 @@ class _ProfilePageState extends State<ProfilePage> {
                             final res = await myHttp.post(
                               // Uri.parse('http://10.0.2.2:8000/api/ubah-password'),
                               // Uri.parse('http://192.168.187.131:8000/api/ubah-password'),
-                              Uri.parse('http://54.252.215.200/api/ubah-password'),
+                              Uri.parse('http://${dotenv.env['APP_IP']}/api/ubah-password'),
                               headers: {
                                 'Authorization': 'Bearer $token',
                                 'Content-Type': 'application/json',

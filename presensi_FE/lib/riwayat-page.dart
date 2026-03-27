@@ -45,7 +45,7 @@ class _RiwayatPageState extends State<RiwayatPage> {
     };
 
     var response = await myHttp.get(
-      Uri.parse('http://54.252.215.200/api/get-presensi'),
+      Uri.parse('http://${dotenv.env['APP_IP']}/api/get-presensi'),
       headers: headers,
     );
 

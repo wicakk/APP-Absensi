@@ -92,7 +92,7 @@ class _FormPengajuanAbsensiState extends State<FormPengajuanAbsensi> {
   String? token;
 
   // final String url = "http://192.168.187.131:8000/api/ajukan-absensi"; // ✅ fix URL
-  final String url = "http://54.252.215.200/api/ajukan-absensi"; // ✅ fix URL
+  final String url = "http://${dotenv.env['APP_IP']}/api/ajukan-absensi"; // ✅ fix URL
 
   @override
   void initState() {
@@ -380,7 +380,7 @@ class _RiwayatPengajuanAbsensiState extends State<RiwayatPengajuanAbsensi>
     with AutomaticKeepAliveClientMixin {
 
   // final String url = "http://192.168.187.131:8000/api/riwayat-absensi"; // ✅ fix URL
-  final String url = "http://54.252.215.200/api/riwayat-absensi"; // ✅ fix URL
+  final String url = "http://${dotenv.env['APP_IP']}/api/riwayat-absensi"; // ✅ fix URL
 
   List<dynamic> riwayat = [];
   bool loading = true;

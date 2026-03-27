@@ -53,7 +53,7 @@ class _LoginPageState extends State<LoginPage> {
       var response = await myHttp.post(
         // Uri.parse('http://10.0.2.2:8000/api/login'),
         // Uri.parse('http://192.168.187.131:8000/api/login'),
-        Uri.parse('http://54.252.215.200/api/login'),
+        Uri.parse('http://${dotenv.env['APP_IP']}/api/login'),
         body: {"email": email, "password": password},
       );
 

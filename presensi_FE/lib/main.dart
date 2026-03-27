@@ -7,6 +7,7 @@ import 'pengajuan/lembur-page.dart';
 import 'pengajuan/pengajuan-absensi.dart';
 
 void main() {
+  await dotenv.load(fileName: ".env");
   runApp(const MyApp());
 }
 

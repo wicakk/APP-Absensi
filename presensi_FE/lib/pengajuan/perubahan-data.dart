@@ -95,7 +95,7 @@ class _FormPerubahanDataState extends State<FormPerubahanData> {
   String? token;
 
   //final String url = "http://192.168.187.131:8000/api/perubahan-data/ajukan";
-  final String url = "http://54.252.215.200/api/perubahan-data/ajukan";
+  final String url = "http://${dotenv.env['APP_IP']}/api/perubahan-data/ajukan";
 
   @override
   void initState() {
@@ -397,7 +397,7 @@ class _RiwayatPerubahanDataState extends State<RiwayatPerubahanData>
     with AutomaticKeepAliveClientMixin {
 
   //final String url = "http://192.168.187.131/api/perubahan-data/riwayat";
-  final String url = "http://54.252.215.200/api/perubahan-data/riwayat";
+  final String url = "http://${dotenv.env['APP_IP']}/api/perubahan-data/riwayat";
 
   List<dynamic> riwayat = [];
   bool loading = true;
